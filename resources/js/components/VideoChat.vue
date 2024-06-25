@@ -167,19 +167,100 @@ export default {
         },
 
         initializeCallListeners() {
+// Inside your method where you handle incoming call
+//             this.videoCallParams.channel.listen("StartVideoChat", ({ data }) => {
+//                 console.log("Received StartVideoChat event:", data);
+//                 if (data.type === "incomingCall") {
+//                     axios.get(`/get-signal-data/${data.signalId}`)
+//                         .then(response => {
+//                             const signalData = response.data;
+//                             const updatedSignal = { ...signalData, sdp: `${signalData.sdp}\n` };
+//                             this.videoCallParams.receivingCall = true;
+//                             this.videoCallParams.caller = data.from;
+//                             this.videoCallParams.callerSignal = updatedSignal;
+//                         })
+//                         .catch(error => console.error("Error fetching signal data:", error));
+//                 }
+//             });
             this.videoCallParams.channel.listen("StartVideoChat", ({data}) => {
                 console.log("Received StartVideoChat event:", data);
                 if (data.type === "incomingCall") {
-                    const updatedSignal = {...data.signalData, sdp: `${data.signalData.sdp}\n`};
-                    this.videoCallParams.receivingCall = true;
-                    this.videoCallParams.caller = data.from;
-                    if (data.signalData && data.signalData.sdp) { // Check for null or undefined
-                        this.videoCallParams.callerSignal = updatedSignal;
-                    } else {
-                        console.error("Received null or undefined signalData.sdp");
-                    }
+                    axios.get(`/get-signal-data/${data.signalId}`)
+                        .then(response => {
+                            const signalData = response.data;
+                            const updatedSignal = {...signalData, sdp: `${signalData.sdp}\n`};
+                            this.videoCallParams.receivingCall = true;
+                            this.videoCallParams.caller = data.from;
+                            this.videoCallParams.callerSignal = updatedSignal;
+
+                            if (!this.videoCallParams.peer2) {
+                                this.videoCallParams.peer2 = new Peer({
+                                    initiator: false,
+                                    trickle: false,
+                                    config: {
+                                        iceServers: [
+                                            {
+                                                urls: "stun:stun.stunprotocol.org",
+                                            },
+                                            {
+                                                urls: "turn:127.0.0.1:3478",
+                                                username: this.turn_username,
+                                                credential: this.turn_credential,
+                                            },
+                                        ],
+                                    },
+                                });
+
+                                this.videoCallParams.peer2.on("signal", (data) => {
+                                    if (this.videoCallParams.peer2._pc.signalingState === "stable") {
+                                        console.error("Attempted to signal in stable state");
+                                    } else {
+                                        axios.post("/video/accept-call", {
+                                            signal: data,
+                                            to: this.videoCallParams.caller,
+                                        }).catch((error) => console.error("Error accepting call:", error));
+                                    }
+                                });
+
+
+                                // this.videoCallParams.peer2.on("signal", (data) => {
+                                //     console.log("Signal data for accepting call:", data);
+                                //     axios.post("/video/accept-call", {
+                                //         signal: data,
+                                //         to: this.videoCallParams.caller,
+                                //     }).catch((error) => console.error("Error accepting call:", error));
+                                // });
+
+                                this.videoCallParams.peer2.on("stream", (stream) => {
+                                    if (this.$refs.partnerVideo) {
+                                        this.$refs.partnerVideo.srcObject = stream;
+                                    }
+                                });
+
+                                this.videoCallParams.peer2.on("connect", () => {
+                                    console.log("Peer connected");
+                                });
+
+                                this.videoCallParams.peer2.on("error", (err) => {
+                                    console.error("Peer error:", err);
+                                    if (err.message.includes("Failed to set remote answer sdp")) {
+                                        console.log("Attempting to renegotiate");
+                                        this.videoCallParams.peer2.signal({renegotiate: true});
+                                    }
+                                });
+
+
+                                this.videoCallParams.peer2.on("close", () => {
+                                    console.log("Call closed by accepter");
+                                });
+                            }
+
+                            this.videoCallParams.peer2.signal(updatedSignal);
+                        })
+                        .catch(error => console.error("Error fetching signal data:", error));
                 }
             });
+
 
         },
 
@@ -205,41 +286,41 @@ export default {
                 },
             });
             console.log("Peer1:", this.videoCallParams.peer1);
-            // this.videoCallParams.peer1.on("signal", (data) => {
-            //     console.log("Signal data for call:", data);
-            //     axios.post("/store-signal-data", {signal_data: data})
-            //         .then(response => {
-            //             const signalId = response.data.signal_id;
-            //             axios.post("/video/call-user", {
-            //                 user_to_call: id,
-            //                 signal_id: signalId,
-            //                 from: this.authuserid,
-            //             }).catch((error) => console.error("Error calling user:", error));
-            //         })
-            //         .catch(error => console.error("Error storing signal data:", error));
-            // });
             this.videoCallParams.peer1.on("signal", (data) => {
                 console.log("Signal data for call:", data);
-                if (data && data.sdp) {
-                    axios.post("/video/upload-signal", {
-                        user_to_call: id,
-                        signal_data: data,
-                        from: this.authuserid,
-                    }).then(response => {
-                        console.log("Signal data uploaded successfully:", response.data);
-
-                        const signalUrl = response.data.url;
-                        // Notify via Pusher with a URL to the signal data
-                        axios.post("/video/notify", {
+                axios.post("/store-signal-data", {signal_data: data})
+                    .then(response => {
+                        const signalId = response.data.signal_id;
+                        axios.post("/video/call-user", {
                             user_to_call: id,
-                            signal_url: signalUrl,
+                            signal_id: signalId,
                             from: this.authuserid,
-                        }).catch((error) => console.error("Error notifying user:", error));
-                    }).catch((error) => console.error("Error uploading signal data:", error));
-                } else {
-                    console.error("Signal data is null or missing sdp property:", data);
-                }
+                        }).catch((error) => console.error("Error calling user:", error));
+                    })
+                    .catch(error => console.error("Error storing signal data:", error));
             });
+            // this.videoCallParams.peer1.on("signal", (data) => {
+            //     console.log("Signal data for call:", data);
+            //     if (data && data.sdp) {
+            //         axios.post("/video/upload-signal", {
+            //             user_to_call: id,
+            //             signal_data: data,
+            //             from: this.authuserid,
+            //         }).then(response => {
+            //             console.log("Signal data uploaded successfully:", response.data);
+            //
+            //             const signalUrl = response.data.url;
+            //             // Notify via Pusher with a URL to the signal data
+            //             axios.post("/video/notify", {
+            //                 user_to_call: id,
+            //                 signal_url: signalUrl,
+            //                 from: this.authuserid,
+            //             }).catch((error) => console.error("Error notifying user:", error));
+            //         }).catch((error) => console.error("Error uploading signal data:", error));
+            //     } else {
+            //         console.error("Signal data is null or missing sdp property:", data);
+            //     }
+            // });
 
 
             this.videoCallParams.peer1.on("connect", () => {
@@ -253,9 +334,6 @@ export default {
             this.videoCallParams.peer1.on("close", () => {
                 console.log("Call closed by caller");
             });
-
-
-
 
 
             this.videoCallParams.peer1.on("stream", (stream) => {
@@ -282,7 +360,11 @@ export default {
         async acceptCall() {
             this.callPlaced = true;
             this.videoCallParams.callAccepted = true;
+
+            // Ensure media permissions are granted
             await this.getMediaPermission();
+
+            // Initialize the peer for the receiving end
             this.videoCallParams.peer2 = new Peer({
                 initiator: false,
                 trickle: false,
@@ -290,19 +372,33 @@ export default {
                 config: {
                     iceServers: [
                         {
-                            urls: "stun:stun.stunprotocol.org",
+                            urls: "stun:stunprotocol.org",
                         },
                         {
-                            urls: process.env.turn_url,
-                            username: process.env.turn_username,
-                            credential: process.env.turn_credential,
+                            urls: "turn:127.0.0.1:3478",
+                            username: this.turn_username,
+                            credential: this.turn_credential,
                         },
                     ],
                 },
-
             });
 
-            this.videoCallParams.peer2.on("signal", (data) => {
+            this.setupPeerEvents(this.videoCallParams.peer2);
+
+            // Signal the caller's signal data
+            if (this.videoCallParams.callerSignal) {
+                try {
+                    this.videoCallParams.peer2.signal(this.videoCallParams.callerSignal);
+                } catch (error) {
+                    console.error("Error signaling caller's signal data:", error);
+                }
+            } else {
+                console.error("Caller signal data is missing");
+            }
+        },
+
+        setupPeerEvents(peer) {
+            peer.on("signal", (data) => {
                 console.log("Signal data for accepting call:", data);
                 axios.post("/video/accept-call", {
                     signal: data,
@@ -310,26 +406,35 @@ export default {
                 }).catch((error) => console.error("Error accepting call:", error));
             });
 
-            this.videoCallParams.peer2.on("stream", (stream) => {
+            peer.on("stream", (stream) => {
                 if (this.$refs.partnerVideo) {
                     this.$refs.partnerVideo.srcObject = stream;
                 }
             });
 
-            this.videoCallParams.peer2.on("connect", () => {
+            peer.on("connect", () => {
                 console.log("Peer connected");
             });
 
-            this.videoCallParams.peer2.on("error", (err) => {
+            peer.on("error", (err) => {
                 console.error("Peer error:", err);
             });
 
-            this.videoCallParams.peer2.on("close", () => {
+            peer.on("close", () => {
                 console.log("Call closed by accepter");
             });
-
-            this.videoCallParams.peer2.signal(this.videoCallParams.callerSignal);
         },
+
+
+// Ensure media permissions are handled properly
+//         async getMediaPermission() {
+//             try {
+//                 this.videoCallParams.stream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
+//             } catch (error) {
+//                 console.error("Error getting media permissions:", error);
+//             }
+//         },
+
 
         toggleCameraArea() {
             if (this.videoCallParams.callAccepted) {

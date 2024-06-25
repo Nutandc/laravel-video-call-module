@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\VideoChatController;
+use App\Http\Controllers\WebrtcStreamingController;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -17,7 +18,6 @@ use Illuminate\Support\Facades\Route;
 */
 
 
-
 Route::get('/', function () {
     return view('welcome');
 });
@@ -31,16 +31,16 @@ Route::group(['middleware' => ['auth']], function () {
         return view('video-chat', ['users' => $users]);
     });
 
-    Route::post('/video/upload-signal', [VideoChatController::class, 'uploadSignal']);
+//    Route::post('/video/upload-signal', [VideoChatController::class, 'uploadSignal']);
 
     Route::post('/video/call-user', [VideoChatController::class, 'callUser']);
     Route::post('/video/notify', [VideoChatController::class, 'notify']);
+    Route::post('/video/accept-call', [VideoChatController::class, 'acceptCall']);
 
 
     // Endpoints to alert call or receive call.
-    Route::post('/video/call-user', 'App\Http\Controllers\VideoChatController@callUser');
-    Route::post('/video/accept-call', 'App\Http\Controllers\VideoChatController@acceptCall');
     Route::post('/store-signal-data', [VideoChatController::class, 'storeSignalData']);
+    Route::post('/store-signal-data-for-offer', [WebrtcStreamingController::class, 'storeSignalData']);
     Route::get('/get-signal-data/{id}', [VideoChatController::class, 'getSignalData']);
 
 

@@ -16,6 +16,7 @@
 
 <script>
 import Peer from "simple-peer";
+import axios from "axios";
 
 export default {
     name: "Viewer",
@@ -59,7 +60,7 @@ export default {
                             urls: "stun:stun.stunprotocol.org",
                         },
                         {
-                            urls: this.turn_url,
+                            urls: "turn:127.0.0.1:3478",
                             username: this.turn_username,
                             credential: this.turn_credential,
                         },
@@ -83,7 +84,14 @@ export default {
         },
         //peer on connect show connected message
 
-        handlePeerEvents(peer, incomingOffer, broadcaster, cleanupCallback) {
+
+        async handlePeerEvents(peer, incomingOffer, broadcaster, cleanupCallback) {
+            await axios.get(`/get-signal-data/1111`)
+                .then(response => {
+                    const signalData = response.data;
+                    console.log(signalData.sdp)
+                    this.sdp = signalData.sdp;
+                })
             peer.on("signal", (data) => {
                 axios
                     .post("/stream-answer", {
@@ -132,8 +140,9 @@ export default {
 
             const updatedOffer = {
                 ...incomingOffer,
-                sdp: `${incomingOffer.sdp}\n`,
+                sdp: this.sdp,
             };
+            console.log("Updated Offer", updatedOffer);
             peer.signal(updatedOffer);
         },
 

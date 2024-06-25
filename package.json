@@ -26,6 +26,7 @@
         "vue-template-compiler": "^2.6.10"
     },
     "dependencies": {
+        "agora-rtc-sdk-ng": "^4.21.0",
         "simple-peer": "^9.8.0"
     }
 }

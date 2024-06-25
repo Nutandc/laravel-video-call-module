@@ -6,6 +6,7 @@ use App\Events\StreamAnswer;
 use App\Events\StreamOffer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 
 class WebrtcStreamingController extends Controller
 {
@@ -28,8 +29,7 @@ class WebrtcStreamingController extends Controller
         // Broadcasts an offer signal sent by broadcaster to a specific user who just joined
         $data['broadcaster'] = $request->broadcaster;
         $data['receiver'] = $request->receiver;
-        $data['offer'] = $request->offer;
-
+        $data['signalId'] = $request->signalId;
         event(new StreamOffer($data));
     }
 
@@ -40,4 +40,22 @@ class WebrtcStreamingController extends Controller
         $data['answer'] = $request->answer;
         event(new StreamAnswer($data));
     }
+
+    public function storeSignalData(Request $request)
+    {
+        $signalData = $request->offer;
+        $signalId = 1111;
+        Cache::put($signalId, $signalData, now()->addMinutes(10)); // Store signal data for 10 minutes
+        return response()->json(['signal_id' => $signalId]);
+    }
+    public function getSignalData($id)
+    {
+        $signalData = Cache::get($id);
+        if ($signalData) {
+            return response()->json($signalData);
+        }
+        return response()->json(['error' => 'Signal data not found'], 404);
+    }
+
+
 }
